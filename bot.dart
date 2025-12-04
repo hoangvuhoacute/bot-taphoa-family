@@ -71,7 +71,7 @@ void main() async {
 
   // --- Lệnh Start ---
   teledart.onCommand('start').listen((message) {
-    message.reply('Xin chào chủ tiệm! Menu đã được cập nhật đầy đủ:',
+    message.reply('Xin chào chủ tiệm! Menu bên dưới nhé !!!',
         replyMarkup: menuKeyboard);
   });
 
