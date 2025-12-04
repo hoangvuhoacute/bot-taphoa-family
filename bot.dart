@@ -20,7 +20,7 @@ const String defaultContent = 'DanViet';
 
 // --- 3. CẤU HÌNH NHẬN THÔNG BÁO ---
 // Bạn gõ /myid để lấy số này, rồi điền vào đây, sau đó push code lên lại.
-const int adminChatId = 0;
+const int adminChatId = 6374004159;
 
 void main() async {
   print('🤖 Đang khởi động Bot V11 (Full + Webhook)...');
