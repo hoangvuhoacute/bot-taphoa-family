@@ -33,7 +33,7 @@ void main() async {
     print('⚠️ Chạy local không cần server giả');
   }
 
-  print('🤖 Đang khởi động Bot V7 (Full tính năng)...');
+  print('🤖 Đang khởi động Bot');
 
   final supabase = SupabaseClient(supabaseUrl, supabaseKey);
   final username = (await Telegram(botToken).getMe()).username;
