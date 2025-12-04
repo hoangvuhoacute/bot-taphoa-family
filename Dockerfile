@@ -1,15 +1,20 @@
-# Sử dụng môi trường Dart chính chủ
+# 1. Sử dụng môi trường Dart chính chủ
 FROM dart:stable AS build
 
-# Thiết lập thư mục làm việc
+# 2. Thiết lập thư mục làm việc
 WORKDIR /app
 
-# Copy file cấu hình và tải thư viện
-COPY pubspec.* ./
+# 3. Chỉ copy file khai báo thư viện trước (để tận dụng cache)
+COPY pubspec.yaml ./
+
+# 4. Tải các thư viện về Server
 RUN dart pub get
 
-# Copy toàn bộ code vào
+# 5. Bây giờ mới copy toàn bộ code nguồn vào
 COPY . .
 
-# Chạy Bot
+# 6. Tải lại thư viện offline một lần nữa để chắc chắn (bước fix lỗi đường dẫn)
+RUN dart pub get --offline
+
+# 7. Lệnh chạy Bot
 CMD ["dart", "run", "bot.dart"]
