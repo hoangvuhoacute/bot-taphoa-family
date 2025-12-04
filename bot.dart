@@ -47,20 +47,21 @@ void main() async {
     keyboard: [
       [
         KeyboardButton(text: '📦 Xem Kho'),
-        KeyboardButton(text: '📉 Hết/Sắp Hết')
+        KeyboardButton(text: '💳 Lấy Mã QR')
+      ], // <--- Thêm nút này
+      [
+        KeyboardButton(text: '📉 Hết/Sắp Hết'),
+        KeyboardButton(text: '📊 Doanh Thu')
       ],
       [
-        KeyboardButton(text: '📊 Doanh Thu'),
-        KeyboardButton(text: '📥 Báo Cáo Nhập')
+        KeyboardButton(text: '📥 Báo Cáo Nhập'),
+        KeyboardButton(text: '⏳ Check Hạn SD')
       ],
       [
         KeyboardButton(text: '➕ HD Nhập Hàng'),
         KeyboardButton(text: '✏️ HD Sửa Hàng')
       ],
-      [
-        KeyboardButton(text: '🔍 Tìm Kiếm'),
-        KeyboardButton(text: '⏳ Check Hạn SD')
-      ],
+      [KeyboardButton(text: 'tìm kiếm')],
     ],
     resizeKeyboard: true,
   );
