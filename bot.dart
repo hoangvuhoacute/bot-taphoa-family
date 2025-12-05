@@ -20,7 +20,7 @@ const String defaultContent = 'DanViet';
 
 // --- QUAN TRỌNG: ID CỦA BẠN ĐỂ NHẬN THÔNG BÁO ---
 // Hãy gõ lệnh /myid trong Bot để lấy số này và thay vào số 0 bên dưới
-int adminChatId = 0;
+int adminChatId = 6374004159;
 
 void main() async {
   print('🤖 Đang khởi động Bot V12 (Auto Banking)...');
