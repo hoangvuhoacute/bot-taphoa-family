@@ -29,7 +29,7 @@ bool isValidBarcode(String? code) {
 }
 
 void main() async {
-  print('🤖 Đang khởi động Bot V13 (Fix lỗi & Check Barcode)...');
+  print('🤖 Đang khởi động Bot');
 
   final supabase = SupabaseClient(supabaseUrl, supabaseKey);
   final username = (await Telegram(botToken).getMe()).username;
