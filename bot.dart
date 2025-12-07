@@ -1,87 +1,71 @@
 import 'dart:io';
-import 'dart:convert'; // Đã thêm thư viện này để đọc dữ liệu ngân hàng
+import 'dart:convert';
 import 'package:teledart/teledart.dart';
 import 'package:teledart/model.dart';
 import 'package:teledart/telegram.dart';
 import 'package:supabase/supabase.dart';
 import 'package:intl/intl.dart';
 
-// --- 1. CẤU HÌNH (THÔNG TIN CỦA BẠN) ---
+// --- 1. CẤU HÌNH BOT & DATABASE ---
 const String botToken = '8398440437:AAHIbNqxvfkzZ7gXgIaXIZcc0Hu5EjgOF28';
 const String supabaseUrl = 'https://jrufrflrvitljuurpdqa.supabase.co';
 const String supabaseKey =
     'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpydWZyZmxydml0bGp1dXJwZHFhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ4NDk4MTgsImV4cCI6MjA4MDQyNTgxOH0.5_BZ_GdeulTQzHR7J83OVRHLLAmA-ONJG1JxqBh0YuY';
 
-// Thông tin Ngân hàng
+// --- 2. CẤU HÌNH NGÂN HÀNG ---
 const String bankId = 'MB';
 const String accountNo = '0829669310';
 const String template = 'compact';
 const String defaultContent = 'DanViet';
 
-// --- QUAN TRỌNG: ID CỦA BẠN ĐỂ NHẬN THÔNG BÁO ---
-// Hãy gõ lệnh /myid trong Bot để lấy số này và thay vào số 0 bên dưới
-int adminChatId = 6374004159;
+// --- 3. CẤU HÌNH NHẬN THÔNG BÁO ---
+// Điền ID của bạn vào đây (Lấy bằng lệnh /myid)
+int adminChatId = 0;
+
+// --- HÀM KIỂM TRA MÃ VẠCH (QUAN TRỌNG) ---
+bool isValidBarcode(String? code) {
+  if (code == null || code.trim().isEmpty) return false; // Không được rỗng
+  // Kiểm tra xem có phải toàn số không (Dùng Regex)
+  return RegExp(r'^[0-9]+$').hasMatch(code);
+}
 
 void main() async {
-  print('🤖 Đang khởi động Bot V12 (Auto Banking)...');
-
-  final supabase = SupabaseClient(supabaseUrl, supabaseKey);
-  final username = (await Telegram(botToken).getMe()).username;
-  var teledart = TeleDart(botToken, Event(username!));
-
-  teledart.start();
-  print('✅ Bot $username đang chạy!');
-
-  // --- SERVER LẮNG NGHE (WEBHOOK) ---
+  // --- Server giả (Keep Alive) ---
   try {
     final server = await HttpServer.bind(InternetAddress.anyIPv4,
         int.parse(Platform.environment['PORT'] ?? '8080'));
     print('🌍 Server đang chạy tại port ${server.port}');
 
     server.listen((request) async {
-      // 1. NẾU CÓ TIN NHẮN TỪ NGÂN HÀNG (SePay gọi)
+      // 1. Webhook SePay
       if (request.method == 'POST' && request.uri.path == '/sepay_webhook') {
         try {
           final content = await utf8.decoder.bind(request).join();
           final data = jsonDecode(content);
 
-          // Lấy thông tin giao dịch
           String amountIn = data['transferAmount'].toString();
           String description = data['content'];
           String date = data['transactionDate'];
-
           final mf = NumberFormat("#,###", "vi_VN");
           String money = mf.format(int.tryParse(amountIn) ?? 0);
 
-          // Gửi thông báo cho bạn
           if (adminChatId != 0) {
-            await teledart.sendMessage(
-                adminChatId,
-                "🔔 **TING TING! TIỀN VỀ!**\n"
-                "---------------------------\n"
-                "💰 Số tiền: **$money đ**\n"
-                "📝 Nội dung: `$description`\n"
-                "⏰ Thời gian: $date\n"
-                "---------------------------\n"
-                "✅ Giao dịch thành công!",
+            await teledart.sendMessage(adminChatId,
+                "🔔 **TING TING! TIỀN VỀ!**\n---------------------------\n💰 Số tiền: **$money đ**\n📝 Nội dung: `$description`\n⏰ Thời gian: $date\n---------------------------\n✅ Giao dịch thành công!",
                 parseMode: 'Markdown');
-          } else {
-            print("⚠️ Chưa cài adminChatId. Giao dịch: $money - $description");
           }
-
           request.response
             ..statusCode = 200
             ..write('OK')
             ..close();
         } catch (e) {
-          print("Lỗi Webhook: $e");
           request.response
             ..statusCode = 500
             ..write('Error')
             ..close();
         }
       }
-      // 2. NẾU LÀ RENDER KIỂM TRA (Keep Alive)
+      // 2. Keep Alive
       else {
         request.response
           ..statusCode = 200
@@ -93,16 +77,14 @@ void main() async {
     print('⚠️ Chạy local: $e');
   }
 
-  // --- LỆNH LẤY ID (ĐỂ CÀI ĐẶT) ---
-  teledart.onCommand('myid').listen((message) {
-    // Lưu tạm ID người dùng vừa gõ lệnh vào biến adminChatId
-    adminChatId = message.chat.id;
-    message.reply(
-        "✅ Đã nhận diện bạn!\n"
-        "🆔 ID: `${message.chat.id}`\n"
-        "Từ giờ Bot sẽ báo tin nhắn tiền về cho bạn.",
-        parseMode: 'Markdown');
-  });
+  print('🤖 Đang khởi động Bot V13 (Check Barcode)...');
+
+  final supabase = SupabaseClient(supabaseUrl, supabaseKey);
+  final username = (await Telegram(botToken).getMe()).username;
+  var teledart = TeleDart(botToken, Event(username!));
+
+  teledart.start();
+  print('✅ Bot $username đang chạy!');
 
   // --- MENU CHÍNH ---
   final menuKeyboard = ReplyKeyboardMarkup(
@@ -132,21 +114,27 @@ void main() async {
   );
 
   teledart.onCommand('start').listen((message) {
-    message.reply('Xin chào chủ tiệm! Hệ thống báo tiền về đã sẵn sàng.',
+    message.reply('Xin chào chủ tiệm! Chọn chức năng:',
         replyMarkup: menuKeyboard);
   });
 
-  // ==========================================
-  // CÁC CHỨC NĂNG KHÁC (GIỮ NGUYÊN)
-  // ==========================================
+  teledart.onCommand('myid').listen((message) {
+    adminChatId = message.chat.id;
+    message.reply(
+        "✅ Đã lưu ID: `${message.chat.id}`. Bot sẽ báo tin tiền về cho bạn.",
+        parseMode: 'Markdown');
+  });
 
+  // ==========================================
+  // 1. TÍNH NĂNG QR CODE
+  // ==========================================
   Future<void> sendQrCode(dynamic message) async {
     String qrUrl =
         'https://img.vietqr.io/image/$bankId-$accountNo-$template.png?addInfo=$defaultContent';
     try {
       await teledart.sendPhoto(message.chat.id, qrUrl,
           caption:
-              "🏧 **MÃ QR CỬA HÀNG**\nSTK: **$accountNo** ($bankId)\nND: `$defaultContent`\n👉 Khách tự nhập số tiền.",
+              "🏧 **MÃ QR CỬA HÀNG**\n--------------------------\n🏦 Ngân hàng: **$bankId**\n💳 STK: **$accountNo**\n📝 Nội dung: `$defaultContent`\n👉 Khách tự nhập số tiền.",
           parseMode: 'Markdown');
     } catch (e) {
       message.reply("Lỗi: $e");
@@ -156,57 +144,34 @@ void main() async {
   teledart.onMessage(keyword: '💳 Lấy Mã QR').listen((m) => sendQrCode(m));
   teledart.onCommand('qr').listen((m) => sendQrCode(m));
 
-  // --- Xem Kho ---
-  teledart.onMessage(keyword: RegExp(r'(📦 Xem Kho)')).listen((m) async {
-    try {
-      await m.reply('⏳ Đang tải...');
-      final d = await supabase.from('products').select().order('stock');
-      String r = "📦 **KHO:**\n";
-      for (var i in d) {
-        final p = NumberFormat("#,###").format(i['sell_price']);
-        r +=
-            "${i['stock'] <= 5 ? (i['stock'] == 0 ? '⚫' : '🔴') : '🟢'} **${i['name']}**\n   👉 Mã: `${i['barcode'] ?? ''}` | SL: **${i['stock']}** | Giá: $p\n\n";
-        if (r.length > 3500) {
-          await m.reply(r, parseMode: 'Markdown');
-          r = "";
-        }
-      }
-      if (r.isNotEmpty) await m.reply(r, parseMode: 'Markdown');
-    } catch (e) {}
-  });
+  // ==========================================
+  // 2. CÁC LỆNH NHẬP & SỬA (ĐÃ THÊM CHECK BARCODE)
+  // ==========================================
 
-  // --- Các lệnh Nhập/Sửa/Tìm... (Giữ nguyên logic cũ) ---
-  teledart
-      .onMessage(keyword: '🔍 Tìm Kiếm')
-      .listen((m) => m.reply('Gõ `/tim [tên]`', parseMode: 'Markdown'));
-  teledart.onCommand('tim').listen((m) async {
-    final k = m.text?.split(' ').sublist(1).join(' ');
-    if (k == null || k.isEmpty) return;
-    final d = await supabase.from('products').select().ilike('name', '%$k%');
-    if (d.isEmpty)
-      await m.reply("❌ Không tìm thấy.");
-    else {
-      String r = "🔍 **KẾT QUẢ:**\n\n";
-      for (var i in d)
-        r +=
-            "- **${i['name']}**\n  Mã: `${i['barcode'] ?? ''}` | Tồn: **${i['stock']}**\n\n";
-      await m.reply(r, parseMode: 'Markdown');
-    }
-  });
-
+  // --- /nhap (Full) ---
   teledart.onCommand('nhap').listen((m) async {
     final args = m.text?.split(' ');
     if (args == null || args.length < 7) {
-      await m.reply("Thiếu thông tin.");
+      await m.reply("❌ Thiếu thông tin. Xem HD.");
       return;
     }
+
+    // 1. Kiểm tra mã vạch
+    String bc = args[1];
+    if (!isValidBarcode(bc)) {
+      await m.reply(
+          "❌ Mã vạch `$bc` không hợp lệ!\n(Phải là số và không được để trống)",
+          parseMode: 'Markdown');
+      return;
+    }
+
     try {
-      String bc = args[1];
       int q = int.parse(args[2]);
       double ip = double.parse(args[3]);
       double sp = double.parse(args[4]);
       String exp = args[5];
       String n = args.sublist(6).join(' ');
+
       final s = await supabase
           .from('products')
           .select()
@@ -214,6 +179,7 @@ void main() async {
           .maybeSingle();
       int id;
       int oldS = 0;
+
       if (s == null) {
         final newP = await supabase
             .from('products')
@@ -235,6 +201,7 @@ void main() async {
         id = s['id'];
         oldS = s['stock'] ?? 0;
       }
+
       final imp = await supabase
           .from('imports')
           .insert({
@@ -261,18 +228,23 @@ void main() async {
       await m.reply("✅ Nhập xong!\n📦 **$n**\n📈 Tồn: **${oldS + q}**",
           parseMode: 'Markdown');
     } catch (e) {
-      await m.reply("Lỗi: $e");
+      m.reply("Lỗi: $e");
     }
   });
 
+  // --- /them (Cộng dồn) ---
   teledart.onCommand('them').listen((m) async {
     final args = m.text?.split(' ');
     if (args == null || args.length < 3) {
       await m.reply("Sai cú pháp.");
       return;
     }
-    int? qty = int.tryParse(args.last);
+
+    // Nếu tham số nhập vào là mã số thì check
     String id = args.sublist(1, args.length - 1).join(' ');
+    // Ở đây ta không check strict vì người dùng có thể nhập Tên thay vì Mã
+
+    int? qty = int.tryParse(args.last);
     try {
       final s = await supabase
           .from('products')
@@ -280,16 +252,57 @@ void main() async {
           .or('barcode.eq."$id",name.eq."$id"')
           .limit(1);
       if (s.isEmpty) {
-        await m.reply("K tìm thấy.");
+        await m.reply("❌ Không tìm thấy: $id");
         return;
       }
       await supabase
           .from('products')
-          .update({'stock': (s[0]['stock'] ?? 0) + qty}).eq('id', s[0]['id']);
+          .update({'stock': (s[0]['stock'] ?? 0) + qty!}).eq('id', s[0]['id']);
       await m.reply("✅ Đã thêm $qty. Tồn mới: ${(s[0]['stock'] ?? 0) + qty}");
     } catch (e) {}
   });
 
+  // --- /suama (Sửa Mã Vạch) ---
+  teledart.onCommand('suama').listen((m) async {
+    final a = m.text?.split(' ');
+    if (a == null || a.length < 3) return;
+
+    // Kiểm tra mã mới
+    String newCode = a.last;
+    if (!isValidBarcode(newCode)) {
+      await m.reply("❌ Mã mới `$newCode` không hợp lệ (Phải là số)!",
+          parseMode: 'Markdown');
+      return;
+    }
+
+    try {
+      final s = await supabase
+          .from('products')
+          .select('id')
+          .or('barcode.eq."${a.sublist(1, a.length - 1).join(' ')}",name.eq."${a.sublist(1, a.length - 1).join(' ')}"')
+          .limit(1);
+      if (s.isNotEmpty) {
+        // Kiểm tra mã mới đã tồn tại chưa
+        final check =
+            await supabase.from('products').select().eq('barcode', newCode);
+        if (check.isNotEmpty) {
+          await m.reply("❌ Mã `$newCode` đã được dùng cho món khác!",
+              parseMode: 'Markdown');
+          return;
+        }
+
+        await supabase
+            .from('products')
+            .update({'barcode': newCode}).eq('id', s[0]['id']);
+        await m.reply("✅ Đã sửa mã thành công: `$newCode`",
+            parseMode: 'Markdown');
+      } else {
+        await m.reply("❌ Không tìm thấy món hàng cũ.");
+      }
+    } catch (e) {}
+  });
+
+  // --- Các lệnh khác (Giữ nguyên) ---
   teledart.onCommand('suagia').listen((m) async {
     final a = m.text?.split(' ');
     if (a != null && a.length >= 4)
@@ -321,23 +334,6 @@ void main() async {
         await m.reply("✅ Đã sửa tên.");
       } catch (e) {}
   });
-  teledart.onCommand('suama').listen((m) async {
-    final a = m.text?.split(' ');
-    if (a != null && a.length >= 3)
-      try {
-        final s = await supabase
-            .from('products')
-            .select('id')
-            .or('barcode.eq."${a.sublist(1, a.length - 1).join(' ')}",name.eq."${a.sublist(1, a.length - 1).join(' ')}"')
-            .limit(1);
-        if (s.isNotEmpty) {
-          await supabase
-              .from('products')
-              .update({'barcode': a.last}).eq('id', s[0]['id']);
-          await m.reply("✅ Đã sửa mã.");
-        }
-      } catch (e) {}
-  });
   teledart.onCommand('chinhkho').listen((m) async {
     final a = m.text?.split(' ');
     if (a != null && a.length >= 3)
@@ -356,6 +352,7 @@ void main() async {
       } catch (e) {}
   });
 
+  // --- Hướng Dẫn & Tìm Kiếm ---
   teledart.onMessage(keyword: '✏️ HD Sửa Hàng').listen((m) => m.reply(
       '🛠 **HƯỚNG DẪN:**\n`/suagia [Mã] [Gốc] [Bán]`\n`/suahan [Mã] [Hạn]`\n`/suaten [Mã] [Tên]`\n`/chinhkho [Mã] [SL]`\n`/suama [Tên] [Mã Mới]`',
       parseMode: 'Markdown'));
@@ -365,6 +362,43 @@ void main() async {
   teledart.onMessage(keyword: '❓ Trợ Giúp').listen((m) => m.reply(
       '📖 Bấm các nút trên menu để xem chi tiết.',
       parseMode: 'Markdown'));
+  teledart.onMessage(keyword: '🔍 Tìm Kiếm').listen((m) => m.reply(
+      '🔎 Gõ lệnh: `/tim [tên]`\nVí dụ: `/tim bánh`',
+      parseMode: 'Markdown'));
+
+  teledart.onCommand('tim').listen((message) async {
+    final k = message.text?.split(' ').sublist(1).join(' ');
+    if (k == null || k.isEmpty) return;
+    final d = await supabase.from('products').select().ilike('name', '%$k%');
+    if (d.isEmpty)
+      await message.reply("❌ Không tìm thấy.");
+    else {
+      String r = "🔍 **KẾT QUẢ:**\n\n";
+      for (var i in d)
+        r +=
+            "- **${i['name']}**\n  Mã: `${i['barcode'] ?? ''}` | Tồn: **${i['stock']}**\n\n";
+      await message.reply(r, parseMode: 'Markdown');
+    }
+  });
+
+  // --- Xem Kho & Check ---
+  teledart.onMessage(keyword: RegExp(r'(📦 Xem Kho)')).listen((m) async {
+    try {
+      await m.reply('⏳ Đang tải...');
+      final d = await supabase.from('products').select().order('stock');
+      String r = "📦 **KHO:**\n";
+      for (var i in d) {
+        final p = NumberFormat("#,###").format(i['sell_price']);
+        r +=
+            "${i['stock'] <= 5 ? (i['stock'] == 0 ? '⚫' : '🔴') : '🟢'} **${i['name']}**\n   👉 Mã: `${i['barcode'] ?? ''}` | SL: **${i['stock']}** | Giá: $p\n\n";
+        if (r.length > 3500) {
+          await m.reply(r, parseMode: 'Markdown');
+          r = "";
+        }
+      }
+      if (r.isNotEmpty) await m.reply(r, parseMode: 'Markdown');
+    } catch (e) {}
+  });
   teledart.onMessage(keyword: RegExp(r'(📉 Hết/Sắp Hết)')).listen((m) async {
     try {
       await m.reply('🕵️ Checking...');
@@ -396,7 +430,8 @@ void main() async {
           parseMode: 'Markdown');
     } catch (e) {}
   });
-  // Báo cáo (Rút gọn)
+
+  // --- Báo Cáo ---
   teledart.onMessage(keyword: '📥 Báo Cáo Nhập').listen((m) => m.reply(
       '📅 Chọn thời gian:',
       replyMarkup: InlineKeyboardMarkup(inlineKeyboard: [
@@ -415,6 +450,7 @@ void main() async {
                   text: 'Tháng Này', callbackData: 'stats_month')
             ]
           ])));
+
   teledart.onCallbackQuery().listen((q) async {
     if (!q.data!.contains('_')) return;
     DateTime n = DateTime.now(), s, e;
