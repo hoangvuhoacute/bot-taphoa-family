@@ -1,3 +1,4 @@
+import 'dart:async'; // Thư viện xử lý lỗi & vùng an toàn
 import 'dart:io';
 import 'dart:convert';
 import 'package:teledart/teledart.dart';
@@ -7,7 +8,7 @@ import 'package:supabase/supabase.dart';
 import 'package:intl/intl.dart';
 
 // ==================================================
-// 1. CẤU HÌNH (Đã điền sẵn thông tin của bạn)
+// 1. CẤU HÌNH (THÔNG TIN CỦA BẠN)
 // ==================================================
 const String botToken = '8398440437:AAHIbNqxvfkzZ7gXgIaXIZcc0Hu5EjgOF28';
 const String supabaseUrl = 'https://jrufrflrvitljuurpdqa.supabase.co';
@@ -20,27 +21,38 @@ const String accountNo = '0829669310';
 const String template = 'compact';
 const String defaultContent = 'DanViet';
 
-// ID nhận thông báo tiền về (Gõ /myid để lấy nếu cần đổi)
+// ID nhận thông báo tiền về
 int adminChatId = 6374004159;
 
-// Hàm kiểm tra mã vạch (Chỉ nhận số)
+// Hàm kiểm tra mã vạch
 bool isValidBarcode(String? code) {
   if (code == null || code.trim().isEmpty) return false;
   return RegExp(r'^[0-9]+$').hasMatch(code);
 }
 
 // ==================================================
-// 2. CHƯƠNG TRÌNH CHÍNH
+// 2. CHƯƠNG TRÌNH CHÍNH (CƠ CHẾ TỰ KHỞI ĐỘNG LẠI)
 // ==================================================
-void main() async {
-  // --- A. Server giả & Webhook (Để Render không tắt Bot + Nhận tiền) ---
+void main() {
+  // Sử dụng runZonedGuarded để bắt mọi lỗi không lường trước (như 409 Conflict)
+  runZonedGuarded(() async {
+    await startApp();
+  }, (error, stack) {
+    print('🔴 PHÁT HIỆN LỖI NGHIÊM TRỌNG: $error');
+    print('🔄 Đang tự khởi động lại Bot để khắc phục...');
+    // Thoát ứng dụng với mã lỗi 1 -> Render sẽ thấy và tự động bật lại Bot mới
+    exit(1);
+  });
+}
+
+Future<void> startApp() async {
+  // --- A. Server Webhook & Keep Alive ---
   try {
     final server = await HttpServer.bind(InternetAddress.anyIPv4,
         int.parse(Platform.environment['PORT'] ?? '8080'));
     print('🌍 Server đang chạy tại port ${server.port}');
 
     server.listen((request) async {
-      // Xử lý Webhook SePay (Tiền về)
       if (request.method == 'POST' && request.uri.path == '/sepay_webhook') {
         try {
           final content = await utf8.decoder.bind(request).join();
@@ -52,13 +64,13 @@ void main() async {
           final mf = NumberFormat("#,###", "vi_VN");
           String money = mf.format(int.tryParse(amountIn) ?? 0);
 
-          if (adminChatId != 0) {
-            // Khởi tạo bot tạm để gửi tin nhắn (vì teledart ở dưới main chưa init xong)
-            // Lưu ý: Cách tốt nhất là tách hàm gửi tin, nhưng để đơn giản ta in log hoặc dùng biến toàn cục.
-            // Ở đây ta dùng print log, thực tế Webhook cần Teledart instance.
-            // Để code đơn giản chạy trong 1 file, ta bỏ qua việc gửi tin ở đây nếu Teledart chưa sẵn sàng.
-            // (Đoạn này chủ yếu để Server trả về OK cho SePay)
-          }
+          // Gửi thông báo (Sử dụng hàm gửi riêng để an toàn)
+          // Lưu ý: Ở đây ta dùng print log, việc gửi tin sẽ do Bot đảm nhận nếu Bot còn sống.
+          // Trong mô hình đơn giản này, ta chấp nhận Webhook chỉ báo OK.
+          // Để Bot gửi tin, ta cần biến teledart toàn cục hoặc khởi tạo lại (nhưng phức tạp).
+          // Tạm thời log ra console.
+          print("💰 NHẬN TIỀN: $money - $description");
+
           request.response
             ..statusCode = 200
             ..write('OK')
@@ -80,9 +92,9 @@ void main() async {
     print('⚠️ Chạy local (không cần server giả)');
   }
 
-  print('🤖 Đang khởi động Bot V14...');
+  print('🤖 Đang khởi động Bot V15 (Auto Restart)...');
 
-  // --- B. Kết nối Database & Telegram ---
+  // --- B. Khởi động Bot Telegram ---
   final supabase = SupabaseClient(supabaseUrl, supabaseKey);
   final username = (await Telegram(botToken).getMe()).username;
   var teledart = TeleDart(botToken, Event(username!));
@@ -90,7 +102,7 @@ void main() async {
   teledart.start();
   print('✅ Bot $username đang chạy và sẵn sàng phục vụ!');
 
-  // --- C. Menu Bàn Phím (Đầy đủ 11 nút) ---
+  // --- MENU CHÍNH ---
   final menuKeyboard = ReplyKeyboardMarkup(
     keyboard: [
       [
@@ -111,82 +123,66 @@ void main() async {
       ],
       [
         KeyboardButton(text: '⏳ Check Hạn SD'),
-        KeyboardButton(text: '⚠️ Check Thiếu Mã')
-      ], 
-      [KeyboardButton(text: '❓ Trợ Giúp')],
+        KeyboardButton(text: '❓ Trợ Giúp')
+      ],
     ],
     resizeKeyboard: true,
   );
 
-  // --- Lệnh /start ---
   teledart.onCommand('start').listen((message) {
-    message.reply('Xin chào chủ tiệm! Hệ thống đã sẵn sàng.',
+    message.reply('Xin chào chủ tiệm! Hệ thống ổn định V15.',
         replyMarkup: menuKeyboard);
   });
 
-  // --- Lệnh /myid (Cập nhật ID nhận tiền) ---
   teledart.onCommand('myid').listen((message) {
     adminChatId = message.chat.id;
-    message.reply("✅ Đã cập nhật ID nhận báo tiền: `${message.chat.id}`",
+    message.reply("✅ Đã cập nhật ID: `${message.chat.id}`",
         parseMode: 'Markdown');
   });
 
   // ==================================================
-  // 3. TÍNH NĂNG: QR CODE THANH TOÁN
+  // 3. CÁC TÍNH NĂNG (QR, KHO, BÁO CÁO...)
   // ==================================================
+
+  // --- QR Code ---
   Future<void> sendQrCode(dynamic message) async {
     String qrUrl =
         'https://img.vietqr.io/image/$bankId-$accountNo-$template.png?addInfo=$defaultContent';
     try {
       await teledart.sendPhoto(message.chat.id, qrUrl,
           caption:
-              "🏧 **MÃ QR CỬA HÀNG**\n--------------------------\n🏦 Ngân hàng: **$bankId**\n💳 STK: **$accountNo**\n📝 Nội dung: `$defaultContent`\n👉 Khách tự nhập số tiền.",
+              "🏧 **MÃ QR CỬA HÀNG**\nSTK: **$accountNo** ($bankId)\nND: `$defaultContent`\n👉 Khách tự nhập số tiền.",
           parseMode: 'Markdown');
     } catch (e) {
-      message.reply("Lỗi tạo QR: $e");
+      message.reply("Lỗi: $e");
     }
   }
 
   teledart.onMessage(keyword: '💳 Lấy Mã QR').listen((m) => sendQrCode(m));
   teledart.onCommand('qr').listen((m) => sendQrCode(m));
 
-  // ==================================================
-  // 4. QUẢN LÝ KHO (Xem, Tìm, Check)
-  // ==================================================
-
-  // --- Xem Kho (Hiện Mã Vạch) ---
+  // --- Xem Kho ---
   teledart.onMessage(keyword: RegExp(r'(📦 Xem Kho)')).listen((m) async {
     try {
-      await m.reply('⏳ Đang tải kho...');
-      final data = await supabase
-          .from('products')
-          .select('name, stock, sell_price, barcode')
-          .order('stock', ascending: true);
-      if (data.isEmpty) {
-        await m.reply('Kho trống!');
-        return;
-      }
-
-      String res = "📦 **DANH SÁCH KHO:**\n\n";
-      for (var item in data) {
-        final p = NumberFormat("#,###", "vi_VN").format(item['sell_price']);
-        res +=
-            "${item['stock'] <= 5 ? (item['stock'] == 0 ? '⚫' : '🔴') : '🟢'} **${item['name']}**\n   👉 Mã: `${item['barcode'] ?? ''}` | SL: **${item['stock']}** | Giá: ${p}đ\n\n";
-        if (res.length > 3500) {
-          await m.reply(res, parseMode: 'Markdown');
-          res = "";
+      await m.reply('⏳ Đang tải...');
+      final d = await supabase.from('products').select().order('stock');
+      String r = "📦 **KHO:**\n";
+      for (var i in d) {
+        final p = NumberFormat("#,###").format(i['sell_price']);
+        r +=
+            "${i['stock'] <= 5 ? (i['stock'] == 0 ? '⚫' : '🔴') : '🟢'} **${i['name']}**\n   👉 Mã: `${i['barcode'] ?? ''}` | SL: **${i['stock']}** | Giá: $p\n\n";
+        if (r.length > 3500) {
+          await m.reply(r, parseMode: 'Markdown');
+          r = "";
         }
       }
-      if (res.isNotEmpty) await m.reply(res, parseMode: 'Markdown');
-    } catch (e) {
-      m.reply("Lỗi: $e");
-    }
+      if (r.isNotEmpty) await m.reply(r, parseMode: 'Markdown');
+    } catch (e) {}
   });
 
   // --- Tìm Kiếm ---
-  teledart.onMessage(keyword: '🔍 Tìm Kiếm').listen((m) => m.reply(
-      '🔎 Gõ lệnh: `/tim [tên]`\nVí dụ: `/tim bánh`',
-      parseMode: 'Markdown'));
+  teledart.onMessage(keyword: '🔍 Tìm Kiếm').listen(
+      (m) => m.reply('🔎 Gõ lệnh: `/tim [tên]`', parseMode: 'Markdown'));
   teledart.onCommand('tim').listen((message) async {
     final k = message.text?.split(' ').sublist(1).join(' ');
     if (k == null || k.isEmpty) return;
@@ -195,177 +191,202 @@ void main() async {
       await message.reply("❌ Không tìm thấy.");
     else {
       String r = "🔍 **KẾT QUẢ:**\n\n";
-      for (var i in d) {
-        final p = NumberFormat("#,###").format(i['sell_price']);
+      for (var i in d)
         r +=
-            "- **${i['name']}**\n  Mã: `${i['barcode'] ?? ''}` | Tồn: **${i['stock']}** | Giá: ${p}đ\n\n";
-      }
+            "- **${i['name']}**\n  Mã: `${i['barcode'] ?? ''}` | Tồn: **${i['stock']}**\n\n";
       await message.reply(r, parseMode: 'Markdown');
     }
   });
 
-  // --- Check Hết/Sắp Hết ---
+  // --- Check ---
   teledart.onMessage(keyword: RegExp(r'(📉 Hết/Sắp Hết)')).listen((m) async {
     try {
-      await m.reply('🕵️ Đang kiểm tra...');
-      final d = await supabase
-          .from('products')
-          .select('name, stock')
-          .lte('stock', 5)
-          .order('stock');
+      await m.reply('🕵️ Checking...');
+      final d = await supabase.from('products').select().lte('stock', 5);
       if (d.isEmpty)
-        await m.reply('✅ Kho ổn định.');
+        await m.reply("✅ Kho ổn.");
       else {
-        String r = "⚠️ **CẦN NHẬP HÀNG:**\n";
-        for (var i in d)
-          r +=
-              "${i['stock'] <= 0 ? '⚫' : '🔴'} **${i['name']}** (Còn: ${i['stock']})\n";
+        String r = "⚠️ **SẮP HẾT:**\n";
+        for (var i in d) r += "- ${i['name']}: ${i['stock']}\n";
         await m.reply(r, parseMode: 'Markdown');
       }
-    } catch (e) {
-      m.reply("Lỗi: $e");
-    }
-  });
-
-  // --- Check Hạn Sử Dụng ---
-  teledart.onMessage(keyword: RegExp(r'(⏳ Check Hạn SD)')).listen((m) async {
-    try {
-      await m.reply('🕵️ Đang quét HSD...');
-      final d = await supabase.from('products').select('name, expiry_date');
-      List<String> exp = [];
-      DateTime now = DateTime.now();
-      DateFormat fmt = DateFormat('dd/MM/yyyy');
-      for (var i in d) {
-        if (i['expiry_date'] == null) continue;
-        try {
-          if (fmt.parse(i['expiry_date']).isBefore(now))
-            exp.add("💀 **${i['name']}** (Hết: ${i['expiry_date']})");
-        } catch (e) {}
-      }
-      if (exp.isEmpty)
-        await m.reply("✅ Không có hàng hết hạn.");
-      else
-        await m.reply("⚠️ **ĐÃ HẾT HẠN:**\n" + exp.join('\n'),
-            parseMode: 'Markdown');
     } catch (e) {}
   });
 
-  // --- Check Thiếu Mã (ĐÃ THÊM LẠI) ---
-  teledart.onMessage(keyword: RegExp(r'(⚠️ Check Thiếu Mã)')).listen((m) async {
+  teledart.onMessage(keyword: RegExp(r'(⏳ Check Hạn SD)')).listen((m) async {
     try {
-      await m.reply('🕵️ Đang tìm sản phẩm thiếu mã...');
-      final d = await supabase
-          .from('products')
-          .select('name, stock')
-          .or('barcode.is.null,barcode.eq.""');
-      if (d.isEmpty) {
-        await m.reply('✅ Tất cả sản phẩm đều có mã.');
-        return;
+      await m.reply('🕵️ Checking...');
+      final d = await supabase.from('products').select();
+      List<String> e = [];
+      DateTime n = DateTime.now();
+      for (var i in d) {
+        if (i['expiry_date'] == null) continue;
+        try {
+          if (DateFormat('dd/MM/yyyy').parse(i['expiry_date']).isBefore(n))
+            e.add("💀 ${i['name']}");
+        } catch (x) {}
       }
-
-      String r = "⚠️ **THIẾU MÃ VẠCH (${d.length}):**\n(Copy lệnh để sửa)\n\n";
-      for (var i in d)
-        r += "🔸 ${i['name']}\n   `/suama ${i['name']} [MÃ_MỚI]`\n\n";
-      await m.reply(r, parseMode: 'Markdown');
-    } catch (e) {
-      m.reply("Lỗi: $e");
-    }
+      await m.reply(
+          e.isEmpty ? "✅ Hạn tốt" : "⚠️ **HẾT HẠN:**\n" + e.join('\n'),
+          parseMode: 'Markdown');
+    } catch (e) {}
   });
 
-  // ==================================================
-  // 5. BÁO CÁO (DOANH THU & NHẬP)
-  // ==================================================
+  // --- Check Thiếu Mã ---
+  teledart.onMessage(keyword: RegExp(r'(⚠️ Check Thiếu Mã)')).listen((m) async {
+    try {
+      await m.reply('🕵️ Đang tìm...');
+      final d = await supabase
+          .from('products')
+          .select('name')
+          .or('barcode.is.null,barcode.eq.""');
+      if (d.isEmpty) {
+        await m.reply('✅ Đủ mã.');
+        return;
+      }
+      String r = "⚠️ **THIẾU MÃ:**\n";
+      for (var i in d) r += "🔸 ${i['name']}\n`/suama ${i['name']} [MÃ]`\n\n";
+      await m.reply(r, parseMode: 'Markdown');
+    } catch (e) {}
+  });
+
+  // --- Báo Cáo ---
   teledart.onMessage(keyword: '📥 Báo Cáo Nhập').listen((m) => m.reply(
-      '📅 Chọn thời gian:',
+      '📅 Chọn:',
       replyMarkup: InlineKeyboardMarkup(inlineKeyboard: [
         [InlineKeyboardButton(text: 'Hôm Nay', callbackData: 'import_today')],
         [InlineKeyboardButton(text: 'Tháng Này', callbackData: 'import_month')]
       ])));
-  teledart
-      .onMessage(keyword: '📊 Doanh Thu')
-      .listen((m) => m.reply('📅 Chọn thời gian:',
-          replyMarkup: InlineKeyboardMarkup(inlineKeyboard: [
-            [
-              InlineKeyboardButton(text: 'Hôm Nay', callbackData: 'stats_today')
-            ],
-            [
-              InlineKeyboardButton(
-                  text: 'Tháng Này', callbackData: 'stats_month')
-            ]
-          ])));
-
-  teledart.onCallbackQuery().listen((query) async {
-    if (!query.data!.contains('_')) return;
-    DateTime now = DateTime.now();
-    DateTime start, end;
-    String title =
-        query.data!.endsWith('today') ? "HÔM NAY" : "THÁNG ${now.month}";
-    if (query.data!.endsWith('today')) {
-      start = DateTime(now.year, now.month, now.day);
-      end = DateTime(now.year, now.month, now.day, 23, 59, 59);
+  teledart.onMessage(keyword: '📊 Doanh Thu').listen((m) => m.reply('📅 Chọn:',
+      replyMarkup: InlineKeyboardMarkup(inlineKeyboard: [
+        [InlineKeyboardButton(text: 'Hôm Nay', callbackData: 'stats_today')],
+        [InlineKeyboardButton(text: 'Tháng Này', callbackData: 'stats_month')]
+      ])));
+  teledart.onCallbackQuery().listen((q) async {
+    if (!q.data!.contains('_')) return;
+    DateTime n = DateTime.now(), s, e;
+    if (q.data!.endsWith('today')) {
+      s = DateTime(n.year, n.month, n.day);
+      e = DateTime(n.year, n.month, n.day, 23, 59, 59);
     } else {
-      start = DateTime(now.year, now.month, 1);
-      end = DateTime(now.year, now.month + 1, 0, 23, 59, 59);
+      s = DateTime(n.year, n.month, 1);
+      e = DateTime(n.year, n.month + 1, 0, 23, 59, 59);
     }
     final mf = NumberFormat("#,###", "vi_VN");
-
     try {
-      teledart.answerCallbackQuery(query.id, text: 'Đang tính...');
-      if (query.data!.startsWith('import_')) {
-        final all = await supabase
-            .from('imports')
-            .select('total_cost, created_date')
-            .limit(500);
+      teledart.answerCallbackQuery(q.id, text: 'Đang tính...');
+      if (q.data!.startsWith('import')) {
+        final all = await supabase.from('imports').select().limit(500);
         double t = 0;
         int c = 0;
         DateFormat f = DateFormat('dd/MM/yyyy');
         for (var i in all) {
           try {
-            DateTime d = f.parse(i['created_date']);
-            if (d.isAfter(start.subtract(Duration(seconds: 1))) &&
-                d.isBefore(end.add(Duration(seconds: 1)))) {
+            if (f
+                .parse(i['created_date'])
+                .isAfter(s.subtract(Duration(seconds: 1)))) {
               t += (i['total_cost'] as num).toDouble();
               c++;
             }
           } catch (e) {}
         }
-        teledart.sendMessage(query.message!.chat.id,
-            "📉 **CHI PHÍ NHẬP $title**\n------------------\n💸 Tổng chi: **${mf.format(t)} đ**\n📝 Số phiếu: $c",
+        teledart.sendMessage(
+            q.message!.chat.id, "📉 **CHI NHẬP:** ${mf.format(t)}đ ($c phiếu)",
             parseMode: 'Markdown');
       } else {
-        final res = await supabase
+        final r = await supabase
             .from('invoice_details')
             .select(
-                'quantity, sell_price, capital_price, invoices!inner(created_date)')
-            .gte('invoices.created_date', start.toIso8601String())
-            .lte('invoices.created_date', end.toIso8601String());
-        double rev = 0;
-        double prof = 0;
-        for (var i in res) {
+                'quantity,sell_price,capital_price,invoices!inner(created_date)')
+            .gte('invoices.created_date', s.toIso8601String())
+            .lte('invoices.created_date', e.toIso8601String());
+        double rev = 0, pro = 0;
+        for (var i in r) {
           int q = i['quantity'];
           rev += (i['sell_price'] ?? 0) * q;
-          prof += ((i['sell_price'] ?? 0) - (i['capital_price'] ?? 0)) * q;
+          pro += ((i['sell_price'] ?? 0) - (i['capital_price'] ?? 0)) * q;
         }
-        teledart.sendMessage(query.message!.chat.id,
-            "💰 **DOANH THU $title**\n------------------\n💵 Thu: **${mf.format(rev)} đ**\n📈 Lãi: **${mf.format(prof)} đ**",
+        teledart.sendMessage(q.message!.chat.id,
+            "💰 **DOANH THU:** ${mf.format(rev)}đ\nLãi: ${mf.format(pro)}đ",
             parseMode: 'Markdown');
       }
-    } catch (e) {
-      teledart.sendMessage(query.message!.chat.id, "Lỗi: $e");
-    }
+    } catch (e) {}
   });
 
-  // ==================================================
-  // 6. CÁC LỆNH NHẬP & SỬA (Logic chi tiết)
-  // ==================================================
-
-  // --- /them [Mã] [SL] ---
+  // --- Nhập / Sửa ---
+  teledart.onCommand('suagia').listen((m) async {
+    final a = m.text?.split(' ');
+    if (a != null && a.length >= 4)
+      try {
+        await supabase.from('products').update({
+          'import_price': double.parse(a[2]),
+          'sell_price': double.parse(a[3])
+        }).eq('barcode', a[1]);
+        await m.reply("✅ Xong.");
+      } catch (e) {}
+  });
+  teledart.onCommand('suahan').listen((m) async {
+    final a = m.text?.split(' ');
+    if (a != null && a.length >= 3)
+      try {
+        await supabase
+            .from('products')
+            .update({'expiry_date': a[2]}).eq('barcode', a[1]);
+        await m.reply("✅ Xong.");
+      } catch (e) {}
+  });
+  teledart.onCommand('suaten').listen((m) async {
+    final a = m.text?.split(' ');
+    if (a != null && a.length >= 3)
+      try {
+        await supabase
+            .from('products')
+            .update({'name': a.sublist(2).join(' ')}).eq('barcode', a[1]);
+        await m.reply("✅ Xong.");
+      } catch (e) {}
+  });
+  teledart.onCommand('suama').listen((m) async {
+    final a = m.text?.split(' ');
+    if (a != null && a.length >= 3) {
+      if (!isValidBarcode(a.last)) {
+        await m.reply("❌ Mã sai");
+        return;
+      }
+      try {
+        final s = await supabase
+            .from('products')
+            .select('id')
+            .or('barcode.eq."${a.sublist(1, a.length - 1).join(' ')}",name.eq."${a.sublist(1, a.length - 1).join(' ')}"')
+            .limit(1);
+        if (s.isNotEmpty) {
+          await supabase
+              .from('products')
+              .update({'barcode': a.last}).eq('id', s[0]['id']);
+          await m.reply("✅ Xong.");
+        }
+      } catch (e) {}
+    }
+  });
+  teledart.onCommand('chinhkho').listen((m) async {
+    final a = m.text?.split(' ');
+    if (a != null && a.length >= 3)
+      try {
+        final s = await supabase
+            .from('products')
+            .select('id')
+            .or('barcode.eq."${a.sublist(1, a.length - 1).join(' ')}",name.eq."${a.sublist(1, a.length - 1).join(' ')}"')
+            .limit(1);
+        if (s.isNotEmpty) {
+          await supabase
+              .from('products')
+              .update({'stock': int.parse(a.last)}).eq('id', s[0]['id']);
+          await m.reply("✅ Xong.");
+        }
+      } catch (e) {}
+  });
   teledart.onCommand('them').listen((m) async {
     final args = m.text?.split(' ');
-    if (args == null || args.length < 3) {
-      await m.reply("❌ Sai cú pháp.");
-      return;
-    }
+    if (args == null || args.length < 3) return;
     int? qty = int.tryParse(args.last);
     String id = args.sublist(1, args.length - 1).join(' ');
     try {
@@ -374,32 +395,24 @@ void main() async {
           .select()
           .or('barcode.eq."$id",name.eq."$id"')
           .limit(1);
-      if (s.isEmpty) {
-        await m.reply("❌ Không tìm thấy: $id");
-        return;
+      if (s.isNotEmpty) {
+        await supabase.from('products').update(
+            {'stock': (s[0]['stock'] ?? 0) + qty!}).eq('id', s[0]['id']);
+        await m.reply("✅ Đã thêm.");
       }
-      await supabase
-          .from('products')
-          .update({'stock': (s[0]['stock'] ?? 0) + qty!}).eq('id', s[0]['id']);
-      await m.reply(
-          "✅ Đã thêm $qty. Tồn mới: **${(s[0]['stock'] ?? 0) + qty}**",
-          parseMode: 'Markdown');
     } catch (e) {}
   });
-
-  // --- /nhap [Full] ---
   teledart.onCommand('nhap').listen((m) async {
     final args = m.text?.split(' ');
     if (args == null || args.length < 7) {
-      await m.reply("❌ Thiếu thông tin. Xem HD.");
+      await m.reply("Thiếu thông tin.");
       return;
     }
     String bc = args[1];
     if (!isValidBarcode(bc)) {
-      await m.reply("❌ Mã vạch không hợp lệ!");
+      await m.reply("Mã sai");
       return;
     }
-
     try {
       int q = int.parse(args[2]);
       double ip = double.parse(args[3]);
@@ -462,83 +475,6 @@ void main() async {
     } catch (e) {
       await m.reply("Lỗi: $e");
     }
-  });
-
-  // --- Các lệnh Sửa ---
-  teledart.onCommand('suagia').listen((m) async {
-    final a = m.text?.split(' ');
-    if (a == null || a.length < 4) {
-      await m.reply("❌ Sai cú pháp");
-      return;
-    }
-    try {
-      await supabase.from('products').update({
-        'import_price': double.parse(a[2]),
-        'sell_price': double.parse(a[3])
-      }).eq('barcode', a[1]);
-      await m.reply("✅ Đã sửa giá.");
-    } catch (e) {}
-  });
-  teledart.onCommand('suahan').listen((m) async {
-    final a = m.text?.split(' ');
-    if (a == null || a.length < 3) {
-      await m.reply("❌ Sai cú pháp");
-      return;
-    }
-    try {
-      await supabase
-          .from('products')
-          .update({'expiry_date': a[2]}).eq('barcode', a[1]);
-      await m.reply("✅ Đã sửa hạn.");
-    } catch (e) {}
-  });
-  teledart.onCommand('suaten').listen((m) async {
-    final a = m.text?.split(' ');
-    if (a == null || a.length < 3) return;
-    try {
-      await supabase
-          .from('products')
-          .update({'name': a.sublist(2).join(' ')}).eq('barcode', a[1]);
-      await m.reply("✅ Đã sửa tên.");
-    } catch (e) {}
-  });
-  teledart.onCommand('chinhkho').listen((m) async {
-    final a = m.text?.split(' ');
-    if (a == null || a.length < 3) return;
-    try {
-      final s = await supabase
-          .from('products')
-          .select('id')
-          .or('barcode.eq."${a.sublist(1, a.length - 1).join(' ')}",name.eq."${a.sublist(1, a.length - 1).join(' ')}"')
-          .limit(1);
-      if (s.isNotEmpty) {
-        await supabase
-            .from('products')
-            .update({'stock': int.parse(a.last)}).eq('id', s[0]['id']);
-        await m.reply("✅ Đã chỉnh kho.");
-      }
-    } catch (e) {}
-  });
-  teledart.onCommand('suama').listen((m) async {
-    final a = m.text?.split(' ');
-    if (a == null || a.length < 3) return;
-    if (!isValidBarcode(a.last)) {
-      await m.reply("❌ Mã mới không hợp lệ!");
-      return;
-    }
-    try {
-      final s = await supabase
-          .from('products')
-          .select('id')
-          .or('barcode.eq."${a.sublist(1, a.length - 1).join(' ')}",name.eq."${a.sublist(1, a.length - 1).join(' ')}"')
-          .limit(1);
-      if (s.isNotEmpty) {
-        await supabase
-            .from('products')
-            .update({'barcode': a.last}).eq('id', s[0]['id']);
-        await m.reply("✅ Đã sửa mã.");
-      }
-    } catch (e) {}
   });
 
   // --- Hướng Dẫn ---
